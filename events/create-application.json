@@ -1,0 +1,5 @@
+{
+  "routeKey": "POST /applications",
+  "headers": {"authorization": "Bearer replace-with-your-token"},
+  "body": "{\"company\": \"Acme\", \"role\": \"Backend Engineer\", \"appliedOn\": \"2026-10-01\"}"
+}

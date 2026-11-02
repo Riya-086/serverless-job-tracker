@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless job application tracker - API Gateway HTTP API, Lambda (Python), DynamoDB and S3.
+
+Parameters:
+  ApiToken:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Bearer token clients must send. Use a long random value.
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 10
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref ApplicationsTable
+        BUCKET_NAME: !Ref AttachmentsBucket
+        API_TOKEN: !Ref ApiToken
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: ["*"]
+        AllowHeaders: [authorization, content-type]
+        AllowMethods: [GET, POST, PATCH, DELETE, OPTIONS]
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: app.handler.lambda_handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ApplicationsTable
+        - Statement:
+            - Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub "${AttachmentsBucket.Arn}/applications/*"
+      Events:
+        CreateApplication:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /applications
+            Method: POST
+        ListApplications:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /applications
+            Method: GET
+        GetApplication:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /applications/{id}
+            Method: GET
+        UpdateApplication:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /applications/{id}
+            Method: PATCH
+        DeleteApplication:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /applications/{id}
+            Method: DELETE
+        CreateAttachment:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /applications/{id}/attachments
+            Method: POST
+        Stats:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /stats
+            Method: GET
+  ApplicationsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - {AttributeName: id, AttributeType: S}
+        - {AttributeName: entity, AttributeType: S}
+        - {AttributeName: status, AttributeType: S}
+        - {AttributeName: appliedOn, AttributeType: S}
+      KeySchema:
+        - {AttributeName: id, KeyType: HASH}
+      GlobalSecondaryIndexes:
+        - IndexName: byDate
+          KeySchema: [{AttributeName: entity, KeyType: HASH}, {AttributeName: appliedOn, KeyType: RANGE}]
+          Projection: {ProjectionType: ALL}
+        - IndexName: byStatus
+          KeySchema: [{AttributeName: status, KeyType: HASH}, {AttributeName: appliedOn, KeyType: RANGE}]
+          Projection: {ProjectionType: ALL}
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  AttachmentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [PUT]
+            AllowedOrigins: ["*"]
+            AllowedHeaders: ["*"]
+            MaxAge: 300
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the API
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"

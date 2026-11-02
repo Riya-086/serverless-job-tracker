@@ -1,0 +1,35 @@
+name: Deploy to AWS
+
+# Manual deploys only. Requires one-time setup described in README ("Continuous deployment").
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # lets GitHub request short-lived AWS credentials via OIDC (no stored keys)
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - run: sam build
+      - run: >
+          sam deploy
+          --stack-name job-tracker
+          --resolve-s3
+          --capabilities CAPABILITY_IAM
+          --no-confirm-changeset
+          --no-fail-on-empty-changeset
+          --parameter-overrides ApiToken=${{ secrets.API_TOKEN }}

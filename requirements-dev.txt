@@ -1,0 +1,6 @@
+# Local development and CI only. The Lambda itself has no third-party dependencies.
+boto3==1.43.123
+moto[dynamodb,s3]==5.2.5
+pytest==9.2.0
+ruff==0.17.3
+cfn-lint==1.59.0
